@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <clipPath id="ribbon-clip-r">
+      <ellipse cx="200" cy="180" rx="350" ry="120"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#ribbon-clip-r)" transform="rotate(15, 200, 100) scale(-1,1) translate(-400,0)">
+    <rect x="-50" y="60" width="500" height="20" fill="#0A0A0A"/>
+    <rect x="-50" y="78" width="500" height="4" fill="white"/>
+    <rect x="-50" y="80" width="500" height="40" fill="#C8102E"/>
+    <rect x="-50" y="118" width="500" height="4" fill="white"/>
+    <rect x="-50" y="120" width="500" height="20" fill="#006600"/>
+  </g>
+</svg>

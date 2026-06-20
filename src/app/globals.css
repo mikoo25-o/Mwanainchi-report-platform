@@ -1,0 +1,145 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-playfair: 'Playfair Display', Georgia, serif;
+  --font-dm-sans: 'DM Sans', system-ui, sans-serif;
+  --font-jetbrains: 'JetBrains Mono', monospace;
+  --brand-red: #C8102E;
+  --brand-green: #006600;
+  --brand-black: #0A0A0A;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-dm-sans);
+  background: #ffffff;
+  color: var(--brand-black);
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: var(--brand-red); border-radius: 3px; }
+
+/* Page transition */
+.page-enter { opacity: 0; transform: translateY(20px); }
+.page-enter-active { opacity: 1; transform: translateY(0); transition: all 0.4s ease; }
+
+/* Sidebar active */
+.nav-active {
+  background: var(--brand-red) !important;
+  color: white !important;
+}
+
+/* SOS Button pulse */
+.sos-btn {
+  animation: pulseRed 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseRed {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200,16,46,0.7); }
+  70% { box-shadow: 0 0 0 12px rgba(200,16,46,0); }
+}
+
+/* Kenya flag ribbon SVG background */
+.flag-ribbon-bg {
+  background: linear-gradient(135deg, #0A0A0A 0%, #1a1a1a 100%);
+}
+
+/* Glass card */
+.glass-card {
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.3);
+}
+
+/* Status badges */
+.status-progress { background: #FEF3C7; color: #D97706; }
+.status-review { background: #DBEAFE; color: #2563EB; }
+.status-resolved { background: #D1FAE5; color: #059669; }
+.status-closed { background: #F3F4F6; color: #6B7280; }
+
+/* Sidebar transition */
+.sidebar-link {
+  transition: all 0.2s ease;
+  border-radius: 8px;
+}
+.sidebar-link:hover {
+  background: rgba(200,16,46,0.08);
+  color: var(--brand-red);
+  padding-left: 20px;
+}
+
+/* Typing cursor */
+.typing-cursor {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background: #C8102E;
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: blink 0.7s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Step tracker */
+.step-done { background: var(--brand-green); color: white; }
+.step-active { background: var(--brand-red); color: white; }
+.step-pending { background: #E5E7EB; color: #9CA3AF; }
+
+/* Mobile nav overlay */
+.mobile-nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 40;
+}
+
+/* Responsive sidebar */
+@media (max-width: 768px) {
+  .sidebar-desktop { display: none; }
+  .main-content-shift { margin-left: 0 !important; }
+}
+
+/* Form inputs */
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 8px;
+  font-family: var(--font-dm-sans);
+  font-size: 14px;
+  transition: border-color 0.2s;
+  outline: none;
+}
+.form-input:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(200,16,46,0.1);
+}
+
+/* Card hover */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+}

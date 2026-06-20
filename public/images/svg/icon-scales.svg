@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Pole -->
+  <rect x="31" y="8" width="2" height="44" fill="#006600"/>
+  <!-- Top bar -->
+  <rect x="10" y="14" width="44" height="2.5" rx="1.25" fill="#006600"/>
+  <!-- Left chain -->
+  <line x1="16" y1="16.5" x2="16" y2="28" stroke="#006600" stroke-width="1.5"/>
+  <!-- Right chain -->
+  <line x1="48" y1="16.5" x2="48" y2="28" stroke="#006600" stroke-width="1.5"/>
+  <!-- Left pan -->
+  <path d="M8 28 Q16 34 24 28" stroke="#006600" stroke-width="1.5" fill="none"/>
+  <!-- Right pan -->
+  <path d="M40 28 Q48 34 56 28" stroke="#006600" stroke-width="1.5" fill="none"/>
+  <!-- Base -->
+  <rect x="24" y="52" width="16" height="3" rx="1.5" fill="#006600"/>
+  <rect x="27" y="50" width="10" height="4" rx="1" fill="#006600"/>
+  <!-- Center diamond -->
+  <rect x="30" y="10" width="4" height="4" rx="1" transform="rotate(45 32 12)" fill="#C8102E"/>
+</svg>
