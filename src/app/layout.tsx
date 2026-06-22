@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { AuthProvider } from '@/lib/auth/AuthContext'
 
 export const metadata: Metadata = {
   title: 'Mwanainchi Report — Your Voice. Your Rights. Your Justice.',
@@ -28,7 +29,7 @@ export default function RootLayout({
         />
       </head>
       <body style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   )

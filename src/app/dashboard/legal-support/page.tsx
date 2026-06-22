@@ -1,11 +1,13 @@
 'use client'
 import React, { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Search, Scale, UserCheck, Gift, HandshakeIcon,
   Globe, MapPin, ChevronRight, CheckCircle2,
   UserX, FileText, MessageSquare, Bot,
 } from 'lucide-react'
+import { useAuth } from '@/lib/auth/AuthContext'
 
 const SPECIALIZATIONS = ['All', 'Criminal Law', 'Family Law', 'Land Disputes', 'Corruption', 'Human Rights', 'Cybercrime', 'Labour Law']
 
@@ -40,8 +42,39 @@ const AI_FEATURES = [
 ]
 
 export default function LegalSupportPage() {
+  const router = useRouter()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [spec, setSpec] = useState('All')
+  const [aiLoading, setAiLoading] = useState(false)
+
+  const handleOpenAIChat = async () => {
+    if (!user) {
+      router.push('/auth/login')
+      return
+    }
+
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/ai-conversation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const data = await res.json()
+      if (res.ok && data.conversation?.id) {
+        router.push(`/dashboard/messages?conversationId=${data.conversation.id}`)
+      } else {
+        console.error('AI conversation error', data)
+        alert(data.error || 'Could not open AI chat. Please try again.')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Could not open AI chat. Please try again.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative' }}>
@@ -266,15 +299,17 @@ export default function LegalSupportPage() {
                 </div>
               ))}
             </div>
-            <button style={{
-              background: 'white', color: '#006600', border: 'none',
+            <button onClick={handleOpenAIChat} disabled={aiLoading} style={{
+              background: aiLoading ? '#E5E7EB' : 'white',
+              color: aiLoading ? '#9CA3AF' : '#006600',
+              border: 'none',
               borderRadius: '8px', padding: '12px 24px',
-              fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+              fontWeight: 700, fontSize: '13px', cursor: aiLoading ? 'default' : 'pointer',
               width: '100%', display: 'flex', alignItems: 'center',
               justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s',
             }}>
               <MessageSquare size={15} />
-              Chat with AI Legal Aid
+              {aiLoading ? 'Opening AI chat…' : 'Chat with AI Legal Aid'}
               <ChevronRight size={15} />
             </button>
           </div>
