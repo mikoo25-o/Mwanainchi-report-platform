@@ -1,7 +1,10 @@
 'use client'
 import React, { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import SOSButton from '@/components/ui/SOSButton'
+import { useAuth } from '@/lib/auth/AuthContext'
+import { supabase } from '@/lib/supabase/client'
 import {
   CheckCircle2,
   ArrowLeft,
@@ -16,24 +19,147 @@ import {
   Phone,
   Scale,
   Shield,
+  AlertCircle,
 } from 'lucide-react'
 
 const STEPS = ['Incident Details', 'Upload Evidence', 'Additional Information', 'Review & Confirm', 'Submission Complete']
 const CATEGORIES = ['Theft / Robbery', 'Assault / Physical Harm', 'Sexual Violence', 'Domestic Violence', 'Corruption / Bribery', 'Land Disputes', 'Fraud / Cybercrime', 'Police Misconduct', 'Human Trafficking', 'Other']
 
 export default function ReportPage() {
+  const { user } = useAuth()
+  const router = useRouter()
+
   const [step, setStep] = useState(1)
   const [anonymous, setAnonymous] = useState(false)
   const [form, setForm] = useState({
     category: '', type: '', date: '', time: '', location: '',
     description: '', victimSelf: true, witnesses: false, involvedDesc: '',
+    policeReported: 'No, not yet',
+    legalRepresentation: 'No, I just need to document this',
+    preferredLanguage: 'English',
+    additionalContext: '',
   })
   const [files, setFiles] = useState<File[]>([])
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [caseNumber, setCaseNumber] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const handleNext = () => {
-    if (step < 5) setStep(step + 1)
-    if (step === 4) setSubmitted(true)
+  // ── Validation per step ──
+  const validateStep = (currentStep: number): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (currentStep === 1) {
+      if (!form.category) errors.category = 'Please select a category'
+      if (!form.type) errors.type = 'Please select an incident type'
+      if (!form.date) errors.date = 'Please provide the date of the incident'
+      if (!form.location.trim()) errors.location = 'Please provide a location'
+      if (!form.description.trim() || form.description.trim().length < 20) {
+        errors.description = 'Please describe what happened (at least 20 characters)'
+      }
+    }
+
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleNext = async () => {
+    // Steps 1–3 require validation before advancing
+    if (step < 4) {
+      if (!validateStep(step)) return
+      setStep(step + 1)
+      return
+    }
+
+    // Step 4 = final submit
+    if (step === 4) {
+      if (!user) {
+        setSubmitError('You must be signed in to submit a report.')
+        return
+      }
+
+      setSubmitting(true)
+      setSubmitError('')
+
+      try {
+        const { data: caseRow, error: insertError } = await supabase
+          .from('cases')
+          .insert({
+            user_id: user.id,
+            category: form.category,
+            incident_type: form.type,
+            incident_date: form.date || null,
+            incident_time: form.time || null,
+            location: form.location,
+            description: form.description,
+            involved_description: form.involvedDesc || null,
+            victim_self: form.victimSelf,
+            has_witnesses: form.witnesses,
+            police_reported: form.policeReported,
+            legal_representation: form.legalRepresentation,
+            preferred_language: form.preferredLanguage,
+            additional_context: form.additionalContext || null,
+            is_anonymous: anonymous,
+            status: 'submitted',
+          })
+          .select()
+          .single()
+
+        if (insertError) {
+          console.error('[REPORT] Insert failed:', insertError.message)
+          setSubmitError(insertError.message || 'Failed to submit report. Please try again.')
+          setSubmitting(false)
+          return
+        }
+
+        console.log('[REPORT] Case created:', caseRow)
+        setCaseNumber(caseRow.case_number)
+
+        // Upload evidence files if any
+        if (files.length > 0) {
+          for (const file of files) {
+            const filePath = `${user.id}/${caseRow.id}/${Date.now()}-${file.name}`
+            const { error: uploadError } = await supabase.storage
+              .from('evidence')
+              .upload(filePath, file, { contentType: file.type })
+
+            if (uploadError) {
+              console.error('[REPORT] Evidence upload failed for', file.name, uploadError.message)
+              continue
+            }
+
+            const { data: urlData } = await supabase.storage
+              .from('evidence')
+              .createSignedUrl(filePath, 60 * 60 * 24 * 365)
+
+            await supabase.from('evidence').insert({
+              case_id: caseRow.id,
+              user_id: user.id,
+              file_name: file.name,
+              file_url: urlData?.signedUrl || '',
+              file_type: file.type,
+              file_size: file.size,
+              description: null,
+            })
+          }
+
+          // Mark case as having evidence uploaded
+          await supabase
+            .from('cases')
+            .update({ status: 'evidence_uploaded' })
+            .eq('id', caseRow.id)
+        }
+
+        setSubmitted(true)
+        setStep(5)
+      } catch (err: any) {
+        console.error('[REPORT] Unexpected error:', err)
+        setSubmitError(err?.message || 'Something went wrong. Please try again.')
+      } finally {
+        setSubmitting(false)
+      }
+    }
   }
 
   if (submitted || step === 5) {
@@ -54,7 +180,7 @@ export default function ReportPage() {
         }}>
           <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '4px' }}>Your Case ID</div>
           <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '20px', color: '#006600' }}>
-            MWR-{new Date().getFullYear()}-{String(Math.floor(Math.random() * 999999)).padStart(6, '0')}
+            {caseNumber}
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -139,28 +265,37 @@ export default function ReportPage() {
                 <h2 style={{ fontWeight: 700, fontSize: '18px', marginBottom: '24px', color: '#0A0A0A' }}>
                   1. What happened?
                 </h2>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '16px', marginBottom: '6px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Incident Category *</label>
-                    <select className="form-input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                    <select className="form-input" value={form.category}
+                      onChange={e => setForm({ ...form, category: e.target.value })}
+                      style={{ borderColor: fieldErrors.category ? '#C8102E' : undefined }}>
                       <option value="">Select category</option>
                       {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                     </select>
+                    {fieldErrors.category && <FieldError text={fieldErrors.category} />}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Incident Type *</label>
-                    <select className="form-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                    <select className="form-input" value={form.type}
+                      onChange={e => setForm({ ...form, type: e.target.value })}
+                      style={{ borderColor: fieldErrors.type ? '#C8102E' : undefined }}>
                       <option value="">Select type</option>
                       <option>Single incident</option>
                       <option>Ongoing / Repeated</option>
                     </select>
+                    {fieldErrors.type && <FieldError text={fieldErrors.type} />}
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '16px', marginBottom: '6px', marginTop: '16px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Date of Incident *</label>
-                    <input type="date" className="form-input" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+                    <input type="date" className="form-input" value={form.date}
+                      onChange={e => setForm({ ...form, date: e.target.value })}
+                      style={{ borderColor: fieldErrors.date ? '#C8102E' : undefined }} />
+                    {fieldErrors.date && <FieldError text={fieldErrors.date} />}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Time (Optional)</label>
@@ -170,7 +305,7 @@ export default function ReportPage() {
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Location of Incident *</label>
                     <div style={{ position: 'relative' }}>
                       <input type="text" placeholder="Enter location" className="form-input"
-                        style={{ paddingRight: '120px' }} value={form.location}
+                        style={{ paddingRight: '120px', borderColor: fieldErrors.location ? '#C8102E' : undefined }} value={form.location}
                         onChange={e => setForm({ ...form, location: e.target.value })} />
                       <button type="button" style={{
                         position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
@@ -181,16 +316,20 @@ export default function ReportPage() {
                         <MapPin size={12} /> Use My Location
                       </button>
                     </div>
+                    {fieldErrors.location && <FieldError text={fieldErrors.location} />}
                   </div>
                 </div>
 
-                <div style={{ marginBottom: '24px' }}>
+                <div style={{ marginBottom: '24px', marginTop: '16px' }}>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Description of Incident *</label>
                   <p style={{ color: '#9CA3AF', fontSize: '11px', marginBottom: '6px' }}>Please provide a detailed description of what happened.</p>
                   <textarea placeholder="Write your description here..." className="form-input"
-                    style={{ minHeight: '120px', resize: 'vertical' }} maxLength={2000}
+                    style={{ minHeight: '120px', resize: 'vertical', borderColor: fieldErrors.description ? '#C8102E' : undefined }} maxLength={2000}
                     value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
-                  <div style={{ textAlign: 'right', fontSize: '11px', color: '#9CA3AF' }}>{form.description.length}/2000</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    {fieldErrors.description ? <FieldError text={fieldErrors.description} /> : <span />}
+                    <div style={{ textAlign: 'right', fontSize: '11px', color: '#9CA3AF' }}>{form.description.length}/2000</div>
+                  </div>
                 </div>
 
                 <h2 style={{ fontWeight: 700, fontSize: '18px', marginBottom: '20px', color: '#0A0A0A' }}>2. Who was involved?</h2>
@@ -276,21 +415,33 @@ export default function ReportPage() {
             {step === 3 && (
               <div>
                 <h2 style={{ fontWeight: 700, fontSize: '18px', marginBottom: '24px' }}>Additional Information</h2>
-                {[
-                  { label: 'Have you reported this to police?', options: ['No, not yet', 'Yes, OB number obtained', 'Yes, but no action taken', 'Afraid to report'] },
-                  { label: 'Do you need legal representation?', options: ['Yes, please connect me with a lawyer', 'No, I just need to document this', 'I need legal aid (cannot afford a lawyer)'] },
-                  { label: 'Preferred Language for Follow-Up', options: ['English', 'Kiswahili', 'Sheng'] },
-                ].map(({ label, options }) => (
-                  <div key={label} style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>{label}</label>
-                    <select className="form-input">
-                      {options.map(o => <option key={o}>{o}</option>)}
-                    </select>
-                  </div>
-                ))}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Have you reported this to police?</label>
+                  <select className="form-input" value={form.policeReported}
+                    onChange={e => setForm({ ...form, policeReported: e.target.value })}>
+                    {['No, not yet', 'Yes, OB number obtained', 'Yes, but no action taken', 'Afraid to report'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Do you need legal representation?</label>
+                  <select className="form-input" value={form.legalRepresentation}
+                    onChange={e => setForm({ ...form, legalRepresentation: e.target.value })}>
+                    {['Yes, please connect me with a lawyer', 'No, I just need to document this', 'I need legal aid (cannot afford a lawyer)'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Preferred Language for Follow-Up</label>
+                  <select className="form-input" value={form.preferredLanguage}
+                    onChange={e => setForm({ ...form, preferredLanguage: e.target.value })}>
+                    {['English', 'Kiswahili', 'Sheng'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Any additional context (Optional)</label>
-                  <textarea className="form-input" placeholder="Any other information that may help..." style={{ minHeight: '100px', resize: 'vertical' }} />
+                  <textarea className="form-input" placeholder="Any other information that may help..."
+                    style={{ minHeight: '100px', resize: 'vertical' }}
+                    value={form.additionalContext}
+                    onChange={e => setForm({ ...form, additionalContext: e.target.value })} />
                 </div>
               </div>
             )}
@@ -318,6 +469,12 @@ export default function ReportPage() {
                   <Lock size={14} color="#C8102E" style={{ flexShrink: 0, marginTop: '2px' }} />
                   By submitting, you confirm that this report is truthful to the best of your knowledge. Your evidence will be encrypted and time-stamped.
                 </div>
+                {submitError && (
+                  <div style={{ marginTop: '14px', background: '#FEF2F2', border: '1px solid rgba(200,16,46,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: '#C8102E', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                    {submitError}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -326,9 +483,10 @@ export default function ReportPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', gap: '10px' }}>
               {step > 1 && (
-                <button onClick={() => setStep(step - 1)} style={{
+                <button onClick={() => setStep(step - 1)} disabled={submitting} style={{
                   background: '#F3F4F6', color: '#374151', border: 'none',
-                  borderRadius: '8px', padding: '11px 20px', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
+                  borderRadius: '8px', padding: '11px 20px', fontWeight: 600, fontSize: '13px',
+                  cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
                 }}>
                   Back
                 </button>
@@ -341,12 +499,12 @@ export default function ReportPage() {
                 <Save size={14} /> Save Draft
               </button>
             </div>
-            <button onClick={handleNext} style={{
-              background: '#C8102E', color: 'white', border: 'none', borderRadius: '8px',
-              padding: '11px 28px', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
+            <button onClick={handleNext} disabled={submitting} style={{
+              background: submitting ? '#E5A0A8' : '#C8102E', color: 'white', border: 'none', borderRadius: '8px',
+              padding: '11px 28px', fontWeight: 700, fontSize: '14px', cursor: submitting ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: '6px',
             }}>
-              {step === 4 ? 'Submit Report' : 'Next'} <ChevronRight size={16} />
+              {submitting ? 'Submitting...' : step === 4 ? 'Submit Report' : 'Next'} {!submitting && <ChevronRight size={16} />}
             </button>
           </div>
         </div>
@@ -434,6 +592,14 @@ export default function ReportPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function FieldError({ text }: { text: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px', color: '#C8102E', fontSize: '11px' }}>
+      <AlertCircle size={11} /> {text}
     </div>
   )
 }

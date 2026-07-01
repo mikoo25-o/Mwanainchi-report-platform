@@ -1,17 +1,125 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth/AuthContext'
+import { supabase } from '@/lib/supabase/client'
 import {
   Plus, Folder, CheckCircle2, Circle, Download,
   Scale, FileText, Calendar, Lock,
-  ChevronRight, AlertCircle, Clock, Shield,
+  ChevronRight, AlertCircle, Clock, Shield, MapPin,
 } from 'lucide-react'
 
 const STEPS = ['Report Submitted', 'Evidence Uploaded', 'Under Review', 'Investigation', 'Referred', 'In Court', 'Resolved']
+const STEP_KEYS = ['submitted', 'evidence_uploaded', 'under_review', 'investigation', 'referred', 'in_court', 'resolved']
+
 const TABS = ['All Cases', 'Ongoing', 'Under Review', 'In Progress', 'Resolved', 'Closed']
 
+const STATUS_LABELS: Record<string, string> = {
+  submitted: 'Submitted',
+  evidence_uploaded: 'Evidence Uploaded',
+  under_review: 'Under Review',
+  investigation: 'Investigation',
+  referred: 'Referred',
+  in_court: 'In Court',
+  resolved: 'Resolved',
+  closed: 'Closed',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  submitted: '#D97706',
+  evidence_uploaded: '#2563EB',
+  under_review: '#D97706',
+  investigation: '#7C3AED',
+  referred: '#2563EB',
+  in_court: '#C8102E',
+  resolved: '#006600',
+  closed: '#6B7280',
+}
+
+interface CaseRow {
+  id: string
+  case_number: string
+  category: string
+  status: string
+  location: string | null
+  incident_date: string | null
+  created_at: string
+  evidenceCount: number
+}
+
 export default function CasesPage() {
+  const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('All Cases')
+  const [cases, setCases] = useState<CaseRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedCase, setSelectedCase] = useState<CaseRow | null>(null)
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) { setLoading(false); return }
+
+    const loadCases = async () => {
+      setLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('cases')
+          .select('id, case_number, category, status, location, incident_date, created_at, evidence(count)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('[CASES] Query error:', error.message)
+          setCases([])
+        } else {
+          const mapped: CaseRow[] = (data || []).map((c: any) => ({
+            id: c.id,
+            case_number: c.case_number,
+            category: c.category,
+            status: c.status,
+            location: c.location,
+            incident_date: c.incident_date,
+            created_at: c.created_at,
+            evidenceCount: c.evidence?.[0]?.count || 0,
+          }))
+          setCases(mapped)
+          if (mapped.length > 0) setSelectedCase(mapped[0])
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCases()
+  }, [user, authLoading])
+
+  // Filter by tab
+  const filteredCases = cases.filter(c => {
+    if (activeTab === 'All Cases') return true
+    if (activeTab === 'Ongoing') return !['resolved', 'closed'].includes(c.status)
+    if (activeTab === 'Under Review') return c.status === 'under_review'
+    if (activeTab === 'In Progress') return ['investigation', 'referred', 'in_court'].includes(c.status)
+    if (activeTab === 'Resolved') return c.status === 'resolved'
+    if (activeTab === 'Closed') return c.status === 'closed'
+    return true
+  })
+
+  // Live stats
+  const totalCases = cases.length
+  const inProgressCount = cases.filter(c => ['investigation', 'referred', 'in_court', 'under_review'].includes(c.status)).length
+  const resolvedCount = cases.filter(c => c.status === 'resolved' || c.status === 'closed').length
+  const totalEvidence = cases.reduce((sum, c) => sum + c.evidenceCount, 0)
+
+  const formatDate = (iso: string | null) => {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const getStepIndex = (status: string) => {
+    const idx = STEP_KEYS.indexOf(status)
+    return idx === -1 ? 0 : idx
+  }
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative' }}>
@@ -84,34 +192,114 @@ export default function CasesPage() {
               ))}
             </div>
 
-            {/* Empty state */}
-            <div style={{
-              background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
-              borderRadius: '16px', padding: '60px 32px',
-              textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                <div style={{
-                  width: '72px', height: '72px', borderRadius: '50%',
-                  background: '#F3F4F6', border: '2px solid #E5E7EB',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Folder size={32} color="#9CA3AF" strokeWidth={1.5} />
-                </div>
-              </div>
-              <h3 style={{ fontWeight: 700, fontSize: '18px', marginBottom: '8px', color: '#374151' }}>No Cases Yet</h3>
-              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '24px', maxWidth: '360px', margin: '0 auto 24px', lineHeight: 1.6 }}>
-                You have not reported any incidents yet. When you do, your cases will appear here with full tracking.
-              </p>
-              <Link href="/dashboard/report" style={{
-                background: '#C8102E', color: 'white', textDecoration: 'none',
-                padding: '11px 24px', borderRadius: '8px', fontWeight: 700, fontSize: '13px',
-                display: 'inline-flex', alignItems: 'center', gap: '7px',
+            {/* Loading */}
+            {loading ? (
+              <div style={{
+                background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
+                borderRadius: '16px', padding: '60px 32px', textAlign: 'center',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               }}>
-                <Plus size={14} strokeWidth={2.5} />
-                Report Your First Incident
-              </Link>
-            </div>
+                <div style={{
+                  width: '34px', height: '34px', border: '4px solid #F3F4F6',
+                  borderTopColor: '#C8102E', borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite', margin: '0 auto 14px',
+                }} />
+                <p style={{ color: '#9CA3AF', fontSize: '13px' }}>Loading your cases...</p>
+              </div>
+            ) : filteredCases.length === 0 ? (
+              /* Empty state */
+              <div style={{
+                background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
+                borderRadius: '16px', padding: '60px 32px',
+                textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                  <div style={{
+                    width: '72px', height: '72px', borderRadius: '50%',
+                    background: '#F3F4F6', border: '2px solid #E5E7EB',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Folder size={32} color="#9CA3AF" strokeWidth={1.5} />
+                  </div>
+                </div>
+                <h3 style={{ fontWeight: 700, fontSize: '18px', marginBottom: '8px', color: '#374151' }}>
+                  {cases.length === 0 ? 'No Cases Yet' : 'No cases match this filter'}
+                </h3>
+                <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '24px', maxWidth: '360px', margin: '0 auto 24px', lineHeight: 1.6 }}>
+                  {cases.length === 0
+                    ? 'You have not reported any incidents yet. When you do, your cases will appear here with full tracking.'
+                    : 'Try selecting a different tab to see your other cases.'}
+                </p>
+                {cases.length === 0 && (
+                  <Link href="/dashboard/report" style={{
+                    background: '#C8102E', color: 'white', textDecoration: 'none',
+                    padding: '11px 24px', borderRadius: '8px', fontWeight: 700, fontSize: '13px',
+                    display: 'inline-flex', alignItems: 'center', gap: '7px',
+                  }}>
+                    <Plus size={14} strokeWidth={2.5} />
+                    Report Your First Incident
+                  </Link>
+                )}
+              </div>
+            ) : (
+              /* Real case cards */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {filteredCases.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelectedCase(c); router.push(`/dashboard/cases/${c.id}`) }}
+                    style={{
+                      background: selectedCase?.id === c.id ? 'rgba(254,242,242,0.95)' : 'rgba(255,255,255,0.92)',
+                      backdropFilter: 'blur(8px)', textAlign: 'left',
+                      border: selectedCase?.id === c.id ? '1.5px solid rgba(200,16,46,0.3)' : '1.5px solid transparent',
+                      borderRadius: '14px', padding: '18px 20px', cursor: 'pointer',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.06)', transition: 'all 0.2s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '12px' }}>
+                      <div>
+                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '14px', color: '#0A0A0A', marginBottom: '4px' }}>
+                          {c.case_number}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#374151', fontWeight: 600 }}>{c.category}</div>
+                      </div>
+                      <span style={{
+                        background: `${STATUS_COLORS[c.status] || '#9CA3AF'}15`,
+                        color: STATUS_COLORS[c.status] || '#9CA3AF',
+                        fontSize: '11px', fontWeight: 700, padding: '4px 10px',
+                        borderRadius: '20px', whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>
+                        {STATUS_LABELS[c.status] || c.status}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '11px', color: '#9CA3AF', marginBottom: '12px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={11} /> {formatDate(c.incident_date)}
+                      </span>
+                      {c.location && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MapPin size={11} /> {c.location}
+                        </span>
+                      )}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FileText size={11} /> {c.evidenceCount} evidence file{c.evidenceCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    {/* Mini progress bar */}
+                    <div style={{ display: 'flex', gap: '3px' }}>
+                      {STEP_KEYS.map((key, i) => (
+                        <div key={key} style={{
+                          flex: 1, height: '4px', borderRadius: '2px',
+                          background: i <= getStepIndex(c.status) ? (STATUS_COLORS[c.status] || '#006600') : '#E5E7EB',
+                        }} />
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Progress legend */}
             <div style={{
@@ -124,29 +312,34 @@ export default function CasesPage() {
                 <h3 style={{ fontWeight: 700, fontSize: '14px' }}>Case Progress — How It Works</h3>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
-                {STEPS.map((step, i) => (
-                  <React.Fragment key={step}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minWidth: '80px' }}>
-                      <div style={{
-                        width: '30px', height: '30px', borderRadius: '50%',
-                        background: i < 3 ? '#006600' : i === 3 ? '#C8102E' : '#E5E7EB',
-                        color: i <= 3 ? 'white' : '#9CA3AF',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
-                        {i < 3
-                          ? <CheckCircle2 size={15} strokeWidth={2.5} />
-                          : i === 3
-                          ? <AlertCircle size={15} strokeWidth={2.5} />
-                          : <span style={{ fontSize: '11px', fontWeight: 700 }}>{i + 1}</span>
-                        }
+                {STEPS.map((step, i) => {
+                  const referenceIdx = selectedCase ? getStepIndex(selectedCase.status) : -1
+                  const done = i < referenceIdx
+                  const active = i === referenceIdx
+                  return (
+                    <React.Fragment key={step}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minWidth: '80px' }}>
+                        <div style={{
+                          width: '30px', height: '30px', borderRadius: '50%',
+                          background: done ? '#006600' : active ? '#C8102E' : '#E5E7EB',
+                          color: done || active ? 'white' : '#9CA3AF',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          {done
+                            ? <CheckCircle2 size={15} strokeWidth={2.5} />
+                            : active
+                            ? <AlertCircle size={15} strokeWidth={2.5} />
+                            : <span style={{ fontSize: '11px', fontWeight: 700 }}>{i + 1}</span>
+                          }
+                        </div>
+                        <span style={{ fontSize: '10px', color: '#6B7280', textAlign: 'center', lineHeight: 1.3 }}>{step}</span>
                       </div>
-                      <span style={{ fontSize: '10px', color: '#6B7280', textAlign: 'center', lineHeight: 1.3 }}>{step}</span>
-                    </div>
-                    {i < STEPS.length - 1 && (
-                      <div style={{ flex: 1, height: '2px', minWidth: '10px', marginBottom: '20px', background: i < 3 ? '#006600' : '#E5E7EB' }} />
-                    )}
-                  </React.Fragment>
-                ))}
+                      {i < STEPS.length - 1 && (
+                        <div style={{ flex: 1, height: '2px', minWidth: '10px', marginBottom: '20px', background: done ? '#006600' : '#E5E7EB' }} />
+                      )}
+                    </React.Fragment>
+                  )
+                })}
               </div>
               <div style={{ display: 'flex', gap: '16px', marginTop: '14px', flexWrap: 'wrap' }}>
                 {[
@@ -160,15 +353,20 @@ export default function CasesPage() {
                   </div>
                 ))}
               </div>
+              {selectedCase && (
+                <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '12px' }}>
+                  Showing progress for <strong style={{ color: '#374151' }}>{selectedCase.case_number}</strong>
+                </p>
+              )}
             </div>
 
-            {/* Stats row */}
+            {/* Stats row — real counts */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '12px', marginTop: '16px' }}>
               {[
-                { icon: <FileText size={18} color="#C8102E" />, label: 'Total Cases', value: '0', bg: '#FEF2F2' },
-                { icon: <Clock size={18} color="#D97706" />, label: 'In Progress', value: '0', bg: '#FFFBEB' },
-                { icon: <CheckCircle2 size={18} color="#006600" />, label: 'Resolved', value: '0', bg: '#F0FDF4' },
-                { icon: <Shield size={18} color="#2563EB" />, label: 'Evidence', value: '0', bg: '#EFF6FF' },
+                { icon: <FileText size={18} color="#C8102E" />, label: 'Total Cases', value: String(totalCases), bg: '#FEF2F2' },
+                { icon: <Clock size={18} color="#D97706" />, label: 'In Progress', value: String(inProgressCount), bg: '#FFFBEB' },
+                { icon: <CheckCircle2 size={18} color="#006600" />, label: 'Resolved', value: String(resolvedCount), bg: '#F0FDF4' },
+                { icon: <Shield size={18} color="#2563EB" />, label: 'Evidence', value: String(totalEvidence), bg: '#EFF6FF' },
               ].map(card => (
                 <div key={card.label} style={{
                   background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
@@ -191,29 +389,39 @@ export default function CasesPage() {
           {/* ── Right panel ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'sticky', top: '80px' }}>
 
-            {/* Case summary */}
+            {/* Case summary — real data of selected case */}
             <div style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', borderRadius: '14px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                 <FileText size={15} color="#C8102E" />
                 <h3 style={{ fontWeight: 700, fontSize: '14px' }}>Case Summary</h3>
               </div>
               {[
-                { label: 'Case ID', icon: <Lock size={11} color="#9CA3AF" /> },
-                { label: 'Category', icon: <Folder size={11} color="#9CA3AF" /> },
-                { label: 'Date Reported', icon: <Calendar size={11} color="#9CA3AF" /> },
-                { label: 'Status', icon: <AlertCircle size={11} color="#9CA3AF" /> },
-                { label: 'Assigned To', icon: <Shield size={11} color="#9CA3AF" /> },
-              ].map(({ label, icon }) => (
+                { label: 'Case ID', icon: <Lock size={11} color="#9CA3AF" />, value: selectedCase?.case_number },
+                { label: 'Category', icon: <Folder size={11} color="#9CA3AF" />, value: selectedCase?.category },
+                { label: 'Date Reported', icon: <Calendar size={11} color="#9CA3AF" />, value: selectedCase ? formatDate(selectedCase.created_at) : undefined },
+                { label: 'Status', icon: <AlertCircle size={11} color="#9CA3AF" />, value: selectedCase ? (STATUS_LABELS[selectedCase.status] || selectedCase.status) : undefined },
+                { label: 'Evidence', icon: <Shield size={11} color="#9CA3AF" />, value: selectedCase ? `${selectedCase.evidenceCount} file(s)` : undefined },
+              ].map(({ label, icon, value }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F3F4F6', fontSize: '12px' }}>
                   <span style={{ color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     {icon} {label}
                   </span>
-                  <span style={{ fontWeight: 600, color: '#0A0A0A' }}>—</span>
+                  <span style={{ fontWeight: 600, color: '#0A0A0A' }}>{value || '—'}</span>
                 </div>
               ))}
-              <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '12px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <ChevronRight size={11} /> Select a case to view details
-              </p>
+              {selectedCase ? (
+                <Link href={`/dashboard/cases/${selectedCase.id}`} style={{
+                  fontSize: '11px', color: '#C8102E', marginTop: '12px', textAlign: 'center',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                  textDecoration: 'none', fontWeight: 600,
+                }}>
+                  View full details <ChevronRight size={11} />
+                </Link>
+              ) : (
+                <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '12px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  <ChevronRight size={11} /> Select a case to view details
+                </p>
+              )}
             </div>
 
             {/* Legal support */}
@@ -279,6 +487,10 @@ export default function CasesPage() {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }

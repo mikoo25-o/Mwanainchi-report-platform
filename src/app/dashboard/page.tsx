@@ -17,41 +17,6 @@ import {
   X,
 } from 'lucide-react'
 
-const STATS = [
-  {
-    icon: <FileText size={22} color="#006600" />,
-    bg: '#F0FDF4',
-    label: 'My Cases',
-    value: '0',
-    sub: 'No cases yet',
-    sub2: 'Start by reporting an incident.',
-  },
-  {
-    icon: <ShieldCheck size={22} color="#C8102E" />,
-    bg: '#FEF2F2',
-    label: 'Evidence Uploaded',
-    value: '0',
-    sub: 'Your evidence is safe',
-    sub2: 'Secure. Private. Tamper-proof.',
-  },
-  {
-    icon: <Gavel size={22} color="#D97706" />,
-    bg: '#FFFBEB',
-    label: 'Messages',
-    value: '0',
-    sub: 'No new messages',
-    sub2: 'From legal team or support.',
-  },
-  {
-    icon: <ShieldCheck size={22} color="#059669" />,
-    bg: '#F0FDF4',
-    label: 'Alerts',
-    value: '0',
-    sub: 'No new alerts',
-    sub2: "You're all caught up.",
-  },
-]
-
 const JOURNEY = [
   { n: 1, label: 'Report', desc: 'Submit details of the incident', color: '#006600' },
   { n: 2, label: 'Evidence', desc: 'Upload any supporting evidence', color: '#C8102E' },
@@ -82,13 +47,45 @@ const RIGHTS_ITEMS = [
   },
 ]
 
+interface DashboardStats {
+  totalCases: number
+  ongoingCases: number
+  resolvedCases: number
+  evidenceCount: number
+  unreadMessages: number
+  latestCaseNumber: string | null
+  latestCaseStatus: string | null
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  submitted: 'Submitted',
+  evidence_uploaded: 'Evidence Uploaded',
+  under_review: 'Under Review',
+  investigation: 'Investigation',
+  referred: 'Referred',
+  in_court: 'In Court',
+  resolved: 'Resolved',
+  closed: 'Closed',
+}
+
 export default function DashboardPage() {
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
   const [showSOS, setShowSOS] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [stats, setStats] = useState<DashboardStats>({
+    totalCases: 0,
+    ongoingCases: 0,
+    resolvedCases: 0,
+    evidenceCount: 0,
+    unreadMessages: 0,
+    latestCaseNumber: null,
+    latestCaseStatus: null,
+  })
 
   useEffect(() => {
     const checkUser = async () => {
@@ -110,6 +107,7 @@ export default function DashboardPage() {
         'Mwananchi'
 
       setUserName(firstName)
+      setUserId(session.user.id)
       setLoading(false)
     }
 
@@ -126,11 +124,76 @@ export default function DashboardPage() {
     return () => subscription.unsubscribe()
   }, [router])
 
+  // Load live stats once we know who the user is
+  useEffect(() => {
+    if (!userId) return
+
+    const loadStats = async () => {
+      setStatsLoading(true)
+      try {
+        // All cases for this user, most recent first
+        const { data: cases, error: casesError } = await supabase
+          .from('cases')
+          .select('id, case_number, status, created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (casesError) console.error('[DASHBOARD] cases query error:', casesError.message)
+
+        const allCases = cases || []
+        const totalCases = allCases.length
+        const resolvedCases = allCases.filter(c => c.status === 'resolved' || c.status === 'closed').length
+        const ongoingCases = totalCases - resolvedCases
+        const latestCase = allCases[0] || null
+
+        // Evidence count across all of this user's cases
+        const { count: evidenceCount, error: evidenceError } = await supabase
+          .from('evidence')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+
+        if (evidenceError) console.error('[DASHBOARD] evidence query error:', evidenceError.message)
+
+        // Unread messages across this user's conversations
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('user_id', userId)
+
+        let unreadMessages = 0
+        if (conversations && conversations.length > 0) {
+          const convIds = conversations.map(c => c.id)
+          const { count } = await supabase
+            .from('conversation_messages')
+            .select('id', { count: 'exact', head: true })
+            .in('conversation_id', convIds)
+            .eq('is_read', false)
+            .neq('sender_id', userId)
+          unreadMessages = count || 0
+        }
+
+        setStats({
+          totalCases,
+          ongoingCases,
+          resolvedCases,
+          evidenceCount: evidenceCount || 0,
+          unreadMessages,
+          latestCaseNumber: latestCase?.case_number || null,
+          latestCaseStatus: latestCase?.status || null,
+        })
+      } catch (err) {
+        console.error('[DASHBOARD] Unexpected stats error:', err)
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [userId])
+
   const handleLogout = async () => {
     setLoggingOut(true)
-
     await supabase.auth.signOut()
-
     router.replace('/auth/login')
     router.refresh()
   }
@@ -173,6 +236,60 @@ export default function DashboardPage() {
       </div>
     )
   }
+
+  // Build stat cards with real values now that data has loaded
+  const STATS = [
+    {
+      icon: <FileText size={22} color="#006600" />,
+      bg: '#F0FDF4',
+      label: 'My Cases',
+      value: statsLoading ? '—' : String(stats.totalCases),
+      sub: statsLoading
+        ? 'Loading...'
+        : stats.totalCases === 0
+        ? 'No cases yet'
+        : `${stats.ongoingCases} ongoing`,
+      sub2: statsLoading
+        ? ''
+        : stats.totalCases === 0
+        ? 'Start by reporting an incident.'
+        : stats.latestCaseNumber
+        ? `Latest: ${stats.latestCaseNumber}`
+        : '',
+    },
+    {
+      icon: <ShieldCheck size={22} color="#C8102E" />,
+      bg: '#FEF2F2',
+      label: 'Evidence Uploaded',
+      value: statsLoading ? '—' : String(stats.evidenceCount),
+      sub: 'Your evidence is safe',
+      sub2: 'Secure. Private. Tamper-proof.',
+    },
+    {
+      icon: <Gavel size={22} color="#D97706" />,
+      bg: '#FFFBEB',
+      label: 'Messages',
+      value: statsLoading ? '—' : String(stats.unreadMessages),
+      sub: statsLoading
+        ? 'Loading...'
+        : stats.unreadMessages === 0
+        ? 'No new messages'
+        : `${stats.unreadMessages} unread`,
+      sub2: 'From legal team or support.',
+    },
+    {
+      icon: <ShieldCheck size={22} color="#059669" />,
+      bg: '#F0FDF4',
+      label: 'Latest Case Status',
+      value: statsLoading
+        ? '—'
+        : stats.latestCaseStatus
+        ? STATUS_LABELS[stats.latestCaseStatus] || stats.latestCaseStatus
+        : '—',
+      sub: stats.latestCaseNumber ? stats.latestCaseNumber : 'No cases yet',
+      sub2: "You're all caught up.",
+    },
+  ]
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative' }}>
