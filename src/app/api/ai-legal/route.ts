@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import type { Database } from '@/lib/supabase/types'
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -66,15 +67,17 @@ async function saveAiMessage(
   userId: string,
   content: string
 ) {
+  const insertData: Database['public']['Tables']['conversation_messages']['Insert'] = {
+    conversation_id: conversationId,
+    sender_id: userId,
+    sender_type: 'ai',
+    content,
+    is_read: false,
+  }
+
   const { data, error } = await supabaseAdmin
     .from('conversation_messages')
-    .insert({
-      conversation_id: conversationId,
-      sender_id: userId,
-      sender_type: 'ai',
-      content,
-      is_read: false,
-    })
+    .insert(insertData)
     .select()
     .single()
 
@@ -83,11 +86,13 @@ async function saveAiMessage(
     return null
   }
 
+  const updateData: Database['public']['Tables']['conversations']['Update'] = {
+    updated_at: new Date().toISOString(),
+  }
+
   await supabaseAdmin
     .from('conversations')
-    .update({
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq('id', conversationId)
 
   return data
@@ -152,7 +157,6 @@ export async function POST(req: NextRequest) {
     try {
       const completion = await groq.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
-
         messages: [
           {
             role: 'system',
@@ -160,7 +164,6 @@ export async function POST(req: NextRequest) {
           },
           ...safeMessages,
         ],
-
         temperature: 0.5,
         max_tokens: 800,
       })
@@ -179,7 +182,7 @@ export async function POST(req: NextRequest) {
         response: aiResponse,
         message: savedMessage,
       })
-    } catch (groqError: any) {
+    } catch (groqError) {
       console.error('Groq API error:', groqError)
 
       const fallbackResponse = getFallbackResponse(latestUserMessage)
@@ -197,7 +200,7 @@ export async function POST(req: NextRequest) {
         aiUnavailable: true,
       })
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('AI legal route error:', error)
 
     return NextResponse.json(
