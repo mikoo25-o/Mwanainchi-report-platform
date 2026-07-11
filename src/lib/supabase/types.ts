@@ -30,7 +30,7 @@ export interface Database {
           is_lawyer?: boolean
           is_anonymous?: boolean
         }
-        Update: Partial<Database['public']['Tables']['profiles']['Insert']>
+        Update: Partial<Database['public']['Tables']['profiles']['Row']>
       }
       cases: {
         Row: {
@@ -57,7 +57,7 @@ export interface Database {
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['cases']['Row'], 'id' | 'case_number' | 'created_at' | 'updated_at'>
-        Update: Partial<Database['public']['Tables']['cases']['Insert']>
+        Update: Partial<Database['public']['Tables']['cases']['Row']>
       }
       evidence: {
         Row: {
@@ -73,7 +73,7 @@ export interface Database {
           uploaded_at: string
         }
         Insert: Omit<Database['public']['Tables']['evidence']['Row'], 'id' | 'uploaded_at'>
-        Update: Partial<Database['public']['Tables']['evidence']['Insert']>
+        Update: Partial<Database['public']['Tables']['evidence']['Row']>
       }
       messages: {
         Row: {
@@ -86,7 +86,7 @@ export interface Database {
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['messages']['Row'], 'id' | 'created_at'>
-        Update: Partial<Database['public']['Tables']['messages']['Insert']>
+        Update: Partial<Database['public']['Tables']['messages']['Row']>
       }
       conversations: {
         Row: {
@@ -98,7 +98,7 @@ export interface Database {
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['conversations']['Row'], 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Database['public']['Tables']['conversations']['Insert']>
+        Update: Partial<Database['public']['Tables']['conversations']['Row']>
       }
       conversation_messages: {
         Row: {
@@ -111,7 +111,7 @@ export interface Database {
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'created_at'>
-        Update: Partial<Database['public']['Tables']['conversation_messages']['Insert']>
+        Update: Partial<Database['public']['Tables']['conversation_messages']['Row']>
       }
       trusted_contacts: {
         Row: {
@@ -123,7 +123,7 @@ export interface Database {
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['trusted_contacts']['Row'], 'id' | 'created_at'>
-        Update: Partial<Database['public']['Tables']['trusted_contacts']['Insert']>
+        Update: Partial<Database['public']['Tables']['trusted_contacts']['Row']>
       }
       lawyers: {
         Row: {
@@ -144,7 +144,7 @@ export interface Database {
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['lawyers']['Row'], 'id' | 'created_at'>
-        Update: Partial<Database['public']['Tables']['lawyers']['Insert']>
+        Update: Partial<Database['public']['Tables']['lawyers']['Row']>
       }
     }
   }
