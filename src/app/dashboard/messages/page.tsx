@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
 import {
   Search,
   Send,
@@ -110,7 +109,11 @@ function conversationMeta(conv: Conversation) {
   }
 }
 
-export default function MessagesPage() {
+export default function MessagesPage({
+  searchParams,
+}: {
+  searchParams: { conversationId?: string }
+}) {
   const { user } = useAuth()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -126,8 +129,8 @@ export default function MessagesPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const searchParams = useSearchParams()
-  const requestedConversationId = searchParams.get('conversationId')
+  // Read conversationId from searchParams prop (no hook needed)
+  const requestedConversationId = searchParams?.conversationId
 
   const active = conversations.find((c) => c.id === activeId) || null
   const activeMeta = active ? conversationMeta(active) : null
