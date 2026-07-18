@@ -139,7 +139,7 @@ export default function SignupPage() {
         last_name: form.lastName.trim(),
         phone: form.phone.trim() || null,
         county: form.county || null,
-        updated_at: new Date().toISOString(),
+        // ✅ removed updated_at – it’s auto‑managed by the database
       },
       {
         onConflict: 'id',
